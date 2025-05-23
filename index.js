@@ -1,11 +1,12 @@
 import crypto from 'crypto';
 import express from 'express';
-import bodyParser from 'body-parser';
+// import bodyParser from 'body-parser';
 import { exec } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
 import ipRangeCheck from 'ip-range-check';
+import getRawBody from 'raw-body';
 
 const app = express();
 const PORT = 1337;
@@ -20,40 +21,45 @@ const githubCIDRs = [
   '143.55.64.0/20'
 ];
 
+app.set('trust proxy', true);
+
 app.use(express.static(path.join(__dirname, '../website/dist')));
 
-app.use('/webhook', (req, res, next) => {
-  const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+// app.use('/webhook', (req, res, next) => {
+//   const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.ip;
+//   console.log('Incoming IP:', ip);
+//   if (!ipRangeCheck(ip, githubCIDRs)) {
+//     console.log('IP not allowed');
+//     return res.status(403).send('Forbidden: Invalid IP');
+//   }
+//   next();
+// });
+
+
+app.post('/webhook', async (req, res) => {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
   if (!ipRangeCheck(ip, githubCIDRs)) {
     return res.status(403).send('Forbidden: Invalid IP');
   }
-  next();
-});
 
-// Parse and keep raw body for GitHub signature verification
-app.use(bodyParser.json({
-  verify: (req, res, buf) => {
-    req.rawBody = buf;
-  }
-}));
-
-function verifySignature(req) {
-  const signature = req.headers['x-hub-signature-256'];
-  if (!signature || typeof signature !== 'string') return false;
-
-  const hmac = crypto.createHmac('sha256', SECRET);
-  const digest = 'sha256=' + hmac.update(req.rawBody).digest('hex');
-
+  let rawBody;
   try {
-    return crypto.timingSafeEqual(Buffer.from(digest), Buffer.from(signature));
-  } catch {
-    return false;
+    rawBody = await getRawBody(req);
+  } catch (err) {
+    return res.status(400).send('Failed to read request body');
   }
-}
 
+  const signature = req.headers['x-hub-signature-256'];
+  const hmac = crypto.createHmac('sha256', SECRET);
+  const digest = 'sha256=' + hmac.update(rawBody).digest('hex');
 
-app.post('/webhook', (req, res) => {
-  if (!verifySignature(req)) {
+  const isValid = signature && crypto.timingSafeEqual(
+    Buffer.from(digest),
+    Buffer.from(signature)
+  );
+
+  if (!isValid) {
     console.warn('Invalid signature');
     return res.status(401).send('Unauthorized');
   }
@@ -77,7 +83,7 @@ app.post('/webhook', (req, res) => {
 
 // Optional root route
 app.get('/', (req, res) => {
-  res.send('Webhook server running.');
+  res.send('Dbwebb server running.');
 });
 
 app.listen(PORT, () => {
