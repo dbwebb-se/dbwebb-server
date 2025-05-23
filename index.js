@@ -5,14 +5,30 @@ import { exec } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import 'dotenv/config';
+import ipRangeCheck from 'ip-range-check';
 
 const app = express();
-const PORT = 1333;
+const PORT = 1337;
 const SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const githubCIDRs = [
+  '192.30.252.0/22',
+  '185.199.108.0/22',
+  '140.82.112.0/20',
+  '143.55.64.0/20'
+];
+
 app.use(express.static(path.join(__dirname, '../website/dist')));
+
+app.use('/webhook', (req, res, next) => {
+  const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+  if (!ipRangeCheck(ip, githubCIDRs)) {
+    return res.status(403).send('Forbidden: Invalid IP');
+  }
+  next();
+});
 
 // Parse and keep raw body for GitHub signature verification
 app.use(bodyParser.json({
