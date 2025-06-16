@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import express from 'express';
 // import bodyParser from 'body-parser';
+import fs from 'fs';
 import { exec } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -84,6 +85,27 @@ app.post('/webhook', async (req, res) => {
 // Optional root route
 app.get('/', (req, res) => {
   res.send('Dbwebb server running.');
+});
+
+app.get('/api/kmom05/:country', (req, res) => {
+  // if (!["sweden", "norway", "denmark"].includes(req.params.country)) {
+  //   return res.status(404).json({ error: 'File not found' });
+  // }
+
+  const filePath = path.join(__dirname, `./data/kmom05/${req.params.country}.json`);
+  fs.readFile(filePath, 'utf8', (err, data) => {
+    if (err) {
+    if (err.code === 'ENOENT') {
+      // File not found
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Some other error
+    return res.status(500).json({ error: 'Server error' });
+  }
+
+  res.json(JSON.parse(data));
+  });
 });
 
 app.listen(PORT, () => {
